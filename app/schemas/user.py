@@ -85,14 +85,18 @@ class UserResponse(BaseModel):
     skills: List[str]
     job_description: Optional[str] = None
     created_at: datetime
+    authToken: str = Field(
+        ..., description="Signed JWT bearer token issued on registration"
+    )
 
     # Build directly from a SQLAlchemy ``User`` instance.
     model_config = ConfigDict(from_attributes=True)
 
 
 class Token(BaseModel):
-    """JWT access token returned by ``POST /api/login``."""
+    """Login response returned by ``POST /api/login``."""
 
-    access_token: str = Field(..., description="Signed JWT bearer token")
-    token_type: str = Field("bearer", description="Token type")
-    expires_in: int = Field(..., description="Token lifetime in seconds")
+    authToken: str = Field(..., description="Signed JWT bearer token")
+    status_code: int = Field(..., description="HTTP status code")
+    message: str = Field(..., description="Human-readable result message")
+    success: bool = Field(..., description="Whether the login succeeded")

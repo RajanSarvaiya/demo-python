@@ -7,7 +7,6 @@ Authentication routes: ``POST /api/register`` and ``POST /api/login``.
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.database import get_db
 from app.schemas.user import Token, UserCreate, UserResponse
 from app.services import auth_service
@@ -98,7 +97,10 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)) -> UserResponse
             detail="Email or phone number already registered.",
         )
 
-    return user
+    # Issue a token immediately so the client is logged in right after signup.
+    # Attach it to the instance so ``from_attributes`` validation picks it up.
+    user.authToken = auth_service.create_access_token(user.id)
+    return UserResponse.model_validate(user)
 
 
 @router.post(
@@ -128,7 +130,8 @@ async def login(request: Request, db: Session = Depends(get_db)) -> Token:
 
     token = auth_service.create_access_token(user.id)
     return Token(
-        access_token=token,
-        token_type="bearer",
-        expires_in=settings.access_token_expire_seconds,
+        authToken=token,
+        status_code=status.HTTP_200_OK,
+        message="Login successful.",
+        success=True,
     )
