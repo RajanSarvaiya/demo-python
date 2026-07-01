@@ -1,10 +1,12 @@
 fastapi>=0.115.6
 uvicorn[standard]>=0.34.0
 sqlalchemy>=2.0.36
+alembic>=1.14.0
 bcrypt>=4.2.1
 pydantic[email]>=2.11.0
 pyjwt>=2.10.0
 python-dotenv>=1.0.1
+python-multipart>=0.0.20
 
-# PostgreSQL driver (only needed if DATABASE_URL points at PostgreSQL).
+# PostgreSQL driver (only needed when DATABASE_URL points at PostgreSQL).
 psycopg2-binary>=2.9.10

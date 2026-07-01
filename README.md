@@ -1,116 +1,198 @@
-# FastAPI User App
+# User Registration & Job Profile API
 
-A pure JSON REST API (no HTML frontend) for user registration and lookup.
-Every endpoint accepts and returns JSON.
+A backend REST API built with **FastAPI** that lets users register with
+job-profile data, log in with **JWT** authentication, and retrieve their own
+profile. Passwords are hashed with **bcrypt**; data is persisted via
+**SQLAlchemy** with **Alembic** migrations.
 
-## Features
+The spec targets **PostgreSQL**, but the code is **database-agnostic**: it runs
+on SQLite out of the box for local development and switches to PostgreSQL by
+changing a single environment variable — no code changes.
 
-- **User registration** with full name, email, password, faculty, skills,
-  job description, company, years of experience, and portfolio URL.
-- **Validation** via Pydantic. Unique email enforced, password minimum
-  6 characters, URL format checked. Errors are returned as JSON.
-- **Password hashing** with bcrypt.
-- **Login** endpoint that verifies credentials.
-- **SQLite + SQLAlchemy ORM** so data persists between requests.
+---
 
 ## Project structure
 
 ```
 fastapi_user_app/
-├── main.py            # FastAPI app + JSON routes
-├── database.py        # Engine, session, Base, get_db dependency
-├── models.py          # SQLAlchemy User model
-├── schemas.py         # Pydantic validation schemas
-├── crud.py            # DB access + password hashing helpers
+├── app/
+│   ├── main.py              # FastAPI app: CORS, routers, startup
+│   ├── config.py            # Settings from environment (.env)
+│   ├── database.py          # Engine / session / Base + get_db dependency
+│   ├── dependencies.py      # get_current_user (OAuth2PasswordBearer)
+│   ├── models/
+│   │   └── user.py          # SQLAlchemy User model
+│   ├── schemas/
+│   │   └── user.py          # Pydantic: UserCreate, UserResponse, Token
+│   ├── routers/
+│   │   ├── auth.py          # POST /api/register, POST /api/login
+│   │   └── users.py         # GET  /api/users/me
+│   ├── services/
+│   │   └── auth_service.py  # User CRUD + JWT create/decode
+│   └── utils/
+│       └── security.py      # bcrypt hash / verify
+├── alembic/                 # Migration environment + versions/
+├── alembic.ini
+├── .env / .env.example
 ├── requirements.txt
 └── README.md
 ```
 
-## Setup & run
+---
 
-1. **Create and activate a virtual environment** (recommended):
+## Setup
 
-   ```bash
-   # Windows (PowerShell)
-   python -m venv .venv
-   .\.venv\Scripts\Activate.ps1
+### 1. Install dependencies
 
-   # macOS / Linux
-   python3 -m venv .venv
-   source .venv/bin/activate
-   ```
+```bash
+python -m venv .venv
+# Windows:
+.venv\Scripts\activate
+# macOS/Linux:
+source .venv/bin/activate
 
-2. **Install dependencies:**
+pip install -r requirements.txt
+```
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+### 2. Configure environment
 
-3. **Run the development server:**
+Copy `.env.example` to `.env` and adjust values:
 
-   ```bash
-   uvicorn main:app --reload
-   ```
+```env
+# Local dev (default — no database server required):
+DATABASE_URL=sqlite:///./app.db
+# Production target:
+# DATABASE_URL=postgresql+psycopg2://username:password@localhost:5432/jobdb
 
-4. Open **http://127.0.0.1:8000/docs** for interactive Swagger UI.
+JWT_SECRET_KEY=change-this-to-a-long-random-secret-in-production
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=60
+```
 
-## API routes
+> **Security:** always set a strong, unique `JWT_SECRET_KEY` outside of dev.
 
-| Method | Path                  | Description                                                       |
-|--------|-----------------------|-------------------------------------------------------------------|
-| GET    | `/`                   | Health/info endpoint — `{"status": "ok", "docs": "/docs"}`.       |
-| POST   | `/api/register`       | Validate, hash password, save user, return created user (201).    |
-| POST   | `/api/login`          | Verify email + password, return the user as JSON.                 |
-| GET    | `/api/users/{user_id}`| Return a single user by id, or 404.                              |
+### 3. Create the database schema
 
-### `POST /api/register`
+Using Alembic (recommended):
 
-Request body (`application/json`):
+```bash
+alembic upgrade head
+```
 
+> The app also calls `Base.metadata.create_all()` on startup for convenience, so
+> it works even without running migrations. For production, rely on Alembic and
+> remove/guard that call.
+
+### 4. Run the server
+
+```bash
+uvicorn app.main:app --reload
+```
+
+Open the interactive docs at **http://127.0.0.1:8000/docs**.
+
+---
+
+## Using PostgreSQL instead of SQLite
+
+1. Install the driver: `pip install psycopg2-binary` (already in
+   `requirements.txt`).
+2. Create a database, e.g. `jobdb`.
+3. Set `DATABASE_URL=postgresql+psycopg2://user:password@localhost:5432/jobdb`
+   in `.env`.
+4. Run `alembic upgrade head`.
+
+On PostgreSQL the `id` column becomes a native `UUID`, `skills` becomes a native
+`TEXT[]` array, and timestamps use `TIMESTAMPTZ` — all transparently, from the
+same models.
+
+---
+
+## API reference
+
+Base URL: `http://127.0.0.1:8000`
+
+### `POST /api/register` → **201 Created**
+
+Request:
 ```json
 {
-  "name": "Mitul Sarvaiya",
-  "email": "mitul@yopmail.com",
-  "password": "secret123",
-  "faculty": "developer",
-  "skills": "AI, Python",
-  "job_description": "Backend developer",
-  "company": "Sarvaswa.AI Labs",
-  "experience_years": 3,
-  "portfolio_url": "https://example.com/mitul"
+  "name": "Rahul Sharma",
+  "email": "rahul@example.com",
+  "phone_number": "+919876543210",
+  "password": "SecurePass123",
+  "job_title": "Backend Developer",
+  "skills": ["Python", "FastAPI", "PostgreSQL"],
+  "job_description": "Building scalable REST APIs and microservices."
 }
 ```
 
-Responses:
-
-- `201 Created` — JSON of the new user (password hash is never returned).
-- `409 Conflict` — `{"detail": "Email already registered."}`
-- `422 Unprocessable Entity` — body failed validation (e.g. password < 6 chars).
-
-### `POST /api/login`
-
-Request body (`application/json`):
-
+Response:
 ```json
-{ "email": "mitul@yopmail.com", "password": "secret123" }
+{
+  "id": "0c897aef-2eca-4182-b804-f28eee114675",
+  "name": "Rahul Sharma",
+  "email": "rahul@example.com",
+  "phone_number": "+919876543210",
+  "job_title": "Backend Developer",
+  "skills": ["Python", "FastAPI", "PostgreSQL"],
+  "job_description": "Building scalable REST APIs and microservices.",
+  "created_at": "2026-07-01T10:00:00Z"
+}
 ```
 
-Responses:
+**Validation:** valid & unique email; unique phone (7–15 digits, optional `+`);
+password ≥ 8 chars; `skills` non-empty; all fields required except
+`job_description`.
 
-- `200 OK` — JSON of the user.
-- `401 Unauthorized` — `{"detail": "Invalid email or password."}`
+**Errors:** `409` (email/phone already exists), `422` (validation error).
 
-## Swagger / OpenAPI docs
+### `POST /api/login` → **200 OK**
 
-FastAPI generates interactive API documentation automatically while the
-server is running:
+Request:
+```json
+{ "email": "rahul@example.com", "password": "SecurePass123" }
+```
 
-| URL | Description |
-|-----|-------------|
-| http://127.0.0.1:8000/docs | **Swagger UI** — try each endpoint in the browser |
-| http://127.0.0.1:8000/redoc | ReDoc — clean reference view |
-| http://127.0.0.1:8000/openapi.json | Raw OpenAPI 3.1 schema |
+Response:
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer",
+  "expires_in": 3600
+}
+```
 
-## Notes
+**Errors:** `401` (invalid credentials).
 
-- The SQLite database file `app.db` is created automatically on first run.
+### `GET /api/users/me` → **200 OK**
+
+Header: `Authorization: Bearer <access_token>`
+
+Returns the same profile shape as `register`. **Errors:** `401`
+(missing/invalid/expired token).
+
+---
+
+## Testing via Swagger UI (`/docs`)
+
+1. **Register** — expand `POST /api/register`, fill in the job data, execute →
+   expect **201**.
+2. **Login** — expand `POST /api/login`, submit email + password → copy the
+   `access_token` from the response.
+3. **Authorize** — click the **Authorize** button (top-right) and paste the
+   token to send it as `Authorization: Bearer <token>` on subsequent requests.
+4. **Get profile** — execute `GET /api/users/me` → confirm it returns the exact
+   data you registered.
+
+---
+
+## Security notes
+
+- Passwords are hashed with **bcrypt** and never stored or returned in plain
+  text — `password_hash` appears in **no** API response.
+- JWTs are signed with `JWT_SECRET_KEY` and expire after
+  `ACCESS_TOKEN_EXPIRE_MINUTES` (default 60).
+- `/api/users/me` is protected by the `OAuth2PasswordBearer` scheme.
+- CORS is open (`*`) by default for easy frontend integration — restrict
+  `allow_origins` in `app/main.py` for production.
