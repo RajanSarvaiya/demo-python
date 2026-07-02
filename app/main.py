@@ -16,6 +16,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.database import Base, engine
 from app.routers import auth, users
 
+HOST = "0.0.0.0"
+PORT = 8000
+
 # Create tables on startup for local/dev convenience. In production, prefer the
 # Alembic migrations under ``alembic/`` and remove or guard this call.
 Base.metadata.create_all(bind=engine)
@@ -27,6 +30,7 @@ app = FastAPI(
         "your own profile."
     ),
     version="1.0.0",
+
 )
 
 # CORS — open by default for easy frontend integration during development.
@@ -47,3 +51,9 @@ app.include_router(users.router)
 def root():
     """Simple health/info endpoint."""
     return {"status": "ok", "docs": "/docs"}
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run("app.main:app", host=HOST, port=PORT, reload=True)
