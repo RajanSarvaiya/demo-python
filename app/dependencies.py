@@ -9,20 +9,20 @@ matching user from the database.
 """
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import User
 from app.services import auth_service
 
-# ``tokenUrl`` points Swagger at the login endpoint and adds the Authorize
-# button. The token is read from the ``Authorization: Bearer <token>`` header.
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/login")
+# ``HTTPBearer`` renders a single "Value" field in Swagger's Authorize dialog:
+# paste the JWT there (Swagger sends it as ``Authorization: Bearer <token>``).
+bearer_scheme = HTTPBearer(description="Paste your JWT access token here.")
 
 
 def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> User:
     """
@@ -37,6 +37,7 @@ def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
 
+    token = credentials.credentials
     user_id = auth_service.decode_access_token(token)
     if user_id is None:
         raise credentials_exception

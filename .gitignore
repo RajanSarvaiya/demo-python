@@ -9,3 +9,6 @@ venv/
 
 # Database
 *.db
+
+# Uploaded files
+uploads/
